@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Local Library Management System (Realtime)</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f5f6fa; }
+  header { background:#2d3436; color:white; padding:15px; text-align:center; }
+  nav { display:flex; justify-content:center; gap:20px; background:#636e72; padding:10px; }
+  nav a { color:white; text-decoration:none; font-weight:bold; }
+  .container { padding:20px; }
+  .book { background:white; border-radius:10px; padding:15px; margin:10px;
+          box-shadow:0 2px 5px rgba(0,0,0,0.1); display:inline-block; width:200px; }
+  .book h3 { margin:0 0 10px; }
+  button { background:#0984e3; border:none; color:white; padding:8px 12px;
+           border-radius:6px; cursor:pointer; margin-top:5px; }
+  button:hover { background:#74b9ff; }
+  #loginForm, #adminPanel { display:none; }
+  input { padding:8px; margin:5px 0; width:100%; border:1px solid #ccc; border-radius:5px; }
+  .request { background:#dfe6e9; padding:5px 10px; border-radius:5px; margin:5px 0; }
+  .request button { margin-left:5px; background:#00b894; }
+  .request button.deny { background:#d63031; }
+  #toast {
+    position: fixed; top: 20px; right: 20px;
+    background-color: #00b894; color: white;
+    padding: 12px 20px; border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    display: none; font-weight: bold; z-index: 9999;
+  }
+</style>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+<!-- Toast Notification -->
+<div id="toast"></div>
+
+<header>
+  <h1>📚 Midroc Gold Mine Employee Library </h1>
+</header>
+
+<nav>
+  <a href="#" onclick="showSection('user')">User</a>
+  <a href="#" onclick="showSection('loginForm')">Admin</a>
+</nav>
+
+<!-- USER VIEW -->
+<div class="container" id="user">
+  <h2>Available Books</h2>
+  <div id="bookList"></div>
+</div>
+
+<!-- ADMIN LOGIN -->
+<div class="container" id="loginForm">
+  <h2>Admin Login</h2>
+  <input type="text" id="adminUser" placeholder="Username">
+  <input type="password" id="adminPass" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- ADMIN PANEL -->
+<div class="container" id="adminPanel">
+  <h2>Admin Panel</h2>
+
+  <h3>Add New Book</h3>
+  <input type="text" id="bookTitle" placeholder="Book Title">
+  <input type="text" id="bookAuthor" placeholder="Author">
+  <button onclick="addBook()">Add Book</button>
+
+  <h3>Books List</h3>
+  <div id="adminBookList"></div>
+
+  <h3>User Requests</h3>
+  <div id="requestList"></div>
+</div>
+
+<script>
+/* 🔹 Firebase Config */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* 🔹 Toast Notification */
+function showToast(message){
+  const toast = document.getElementById('toast');
+  toast.innerText = message;
+  toast.style.display = 'block';
+  setTimeout(()=>{ toast.style.display = 'none'; }, 2000);
+}
+
+/* 🔹 UI Sections */
+function showSection(sectionId){
+  document.getElementById("user").style.display = "none";
+  document.getElementById("loginForm").style.display = "none";
+  document.getElementById("adminPanel").style.display = "none";
+  document.getElementById(sectionId).style.display = "block";
+  loadBooks();
+}
+
+/* 🔹 Load Books (Realtime) */
+function loadBooks(){
+  db.collection("books").onSnapshot(snapshot=>{
+    const books = snapshot.docs.map(doc=>({id: doc.id, ...doc.data()}));
+    
+    // User View
+    let list = document.getElementById("bookList");
+    list.innerHTML = "";
+    books.forEach((b)=>{
+      list.innerHTML += `
+        <div class="book">
+          <h3>${b.title}</h3>
+          <p><b>Author:</b> ${b.author}</p>
+          <button onclick="requestBook('${b.title}')">Request</button>
+        </div>`;
+    });
+
+    // Admin Book List
+    let adminList = document.getElementById("adminBookList");
+    adminList.innerHTML = "";
+    books.forEach((b)=>{
+      adminList.innerHTML += `
+        <div class="book">
+          <h3>${b.title}</h3>
+          <p>${b.author}</p>
+          <button onclick="removeBook('${b.id}')">Remove</button>
+        </div>`;
+    });
+  });
+}
+
+/* 🔹 Add Book */
+async function addBook(){
+  let title = document.getElementById("bookTitle").value;
+  let author = document.getElementById("bookAuthor").value;
+  if(title && author){
+    await db.collection("books").add({title, author});
+    document.getElementById("bookTitle").value="";
+    document.getElementById("bookAuthor").value="";
+    showToast("Book added!");
+  }else{ alert("Enter book title and author."); }
+}
+
+/* 🔹 Remove Book */
+async function removeBook(id){
+  await db.collection("books").doc(id).delete();
+  showToast("Book removed!");
+}
+
+/* 🔹 Request Book */
+async function requestBook(bookName){
+  let userName = prompt("Enter your name:");
+  if(!userName) return;
+  await db.collection("requests").add({
+    book: bookName,
+    user: userName,
+    status: "pending",
+    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  showToast(`You requested: ${bookName}`);
+}
+
+/* 🔹 Load Requests (Realtime) */
+function loadRequests(){
+  db.collection("requests").orderBy("timestamp","desc").onSnapshot(snapshot=>{
+    const requests = snapshot.docs.map(doc=>({id: doc.id, ...doc.data()}));
+    let requestDiv = document.getElementById("requestList");
+    requestDiv.innerHTML="";
+    if(requests.length===0){
+      requestDiv.innerHTML="<p>No requests yet.</p>";
+      return;
+    }
+    requests.forEach((r)=>{
+      requestDiv.innerHTML += `
+        <div class="request">
+          ${r.book} - <b>${r.user}</b> 
+          <button onclick="approveRequest('${r.id}', '${r.book}')">Approve</button>
+          <button class="deny" onclick="denyRequest('${r.id}')">Deny</button>
+        </div>`;
+    });
+  });
+}
+
+/* 🔹 Approve Request */
+async function approveRequest(id, bookName){
+  await db.collection("requests").doc(id).update({status:"approved"});
+  showToast(`Request for ${bookName} approved!`);
+}
+
+/* 🔹 Deny Request */
+async function denyRequest(id){
+  await db.collection("requests").doc(id).delete();
+  showToast("Request denied!");
+}
+
+/* 🔹 Admin Login */
+function login(){
+  let u = document.getElementById("adminUser").value;
+  let p = document.getElementById("adminPass").value;
+  if(u==="admin" && p==="1234"){
+    showSection("adminPanel");
+    loadRequests(); // Start listening to requests in real-time
+  }else{ alert("Invalid login!"); }
+}
+
+/* 🔹 Initial Load */
+showSection("user");
+</script>
+
+</body>
+</html>
